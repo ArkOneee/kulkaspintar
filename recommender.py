@@ -24,7 +24,7 @@ KILAT_LABEL = "Masakan Kilat"
 KILAT_MAX_MINS = 15
 CLUSTER_NAMES = ("Menu Hemat", "Menu Lengkap")
 RESULT_FIELDS = (
-    "id", "title", "category", "cluster_label", "prep_time_mins", "est_cost", "steps",
+    "id", "title", "category", "cluster_label", "prep_time_mins", "steps",
 )
 MIN_SCORE = 0.05
 EXPIRING_BONUS = 0.15
@@ -32,7 +32,7 @@ CANDIDATE_POOL = 30
 
 
 @lru_cache(maxsize=1)
-def _load_index():
+def load_index():
     """Memuat katalog resep dan membangun matriks TF-IDF (di-cache di memori)."""
     with get_connection() as conn:
         recipes = [dict(r) for r in conn.execute("SELECT * FROM recipes")]
@@ -43,7 +43,7 @@ def _load_index():
     return recipes, vectorizer, matrix
 
 
-def _build_matchers(names):
+def build_matchers(names):
     """Memisahkan frasa bahan majemuk dan kata inti protein untuk pencocokan."""
     phrases, tokens = set(), set()
     for name in names:
@@ -78,20 +78,39 @@ def _matches(item, phrases, tokens):
     return not tokens.isdisjoint(words) and VARIANT_WORDS.isdisjoint(words)
 
 
-def _split_ingredients(raw_str, phrases, tokens):
-    """Mengelompokkan bahan resep menjadi tersedia dan kurang (bumbu dasar diabaikan)."""
+def core_ingredients(raw_str):
+    """Daftar bahan inti resep: tanpa judul seksi dan tanpa bumbu dasar."""
+    return [i for i in _ingredient_items(raw_str) if not _is_staple(i)]
+
+
+def split_ingredients(raw_str, phrases, tokens):
+    """Mengelompokkan bahan inti resep menjadi tersedia dan kurang."""
     matched, missing = [], []
-    for item in _ingredient_items(raw_str):
-        if not _is_staple(item):
-            (matched if _matches(item, phrases, tokens) else missing).append(item)
+    for item in core_ingredients(raw_str):
+        (matched if _matches(item, phrases, tokens) else missing).append(item)
     return matched, missing
+
+
+def _coverage(matched, missing):
+    return len(matched) / max(1, len(matched) + len(missing))
+
+
+def build_result(rec, matched, missing, uses_exp=False):
+    """Menyusun dict hasil satu resep beserta persentase bahan yang tersedia."""
+    return {
+        **{k: rec[k] for k in RESULT_FIELDS},
+        "match_percent": round(100 * _coverage(matched, missing)),
+        "uses_expiring": uses_exp,
+        "matched_ingredients": matched,
+        "missing_ingredients": missing,
+    }
 
 
 def _kmeans_labels(recipes):
     """Mengelompokkan resep dengan K-Means; klaster termurah = Hemat, lainnya = Lengkap."""
     features = np.array(
         [
-            [r["prep_time_mins"], r["est_cost"], r["ingredients_raw"].count(",") + 1]
+            [r["prep_time_mins"], r["ingredients_raw"].count(",") + 1]
             for r in recipes
         ],
         dtype=float,
@@ -99,14 +118,14 @@ def _kmeans_labels(recipes):
     scaler = StandardScaler()
     km = KMeans(n_clusters=len(CLUSTER_NAMES), random_state=42, n_init=10)
     labels = km.fit_predict(scaler.fit_transform(features))
-    cheapest_first = np.argsort(scaler.inverse_transform(km.cluster_centers_)[:, 1])
-    names = dict(zip(cheapest_first.tolist(), CLUSTER_NAMES))
+    simpler_first = np.argsort(scaler.inverse_transform(km.cluster_centers_)[:, 1])
+    names = dict(zip(simpler_first.tolist(), CLUSTER_NAMES))
     return [names[int(lbl)] for lbl in labels]
 
 
 def run_kmeans_clustering():
     """Memberi label menu: Kilat lewat aturan waktu masak, Hemat/Lengkap lewat K-Means."""
-    recipes, _, _ = _load_index()
+    recipes, _, _ = load_index()
     slow = [r for r in recipes if r["prep_time_mins"] > KILAT_MAX_MINS]
     if len(slow) < len(CLUSTER_NAMES):
         return {}
@@ -119,13 +138,13 @@ def run_kmeans_clustering():
             [(label, rid) for rid, label in labels.items()],
         )
 
-    _load_index.cache_clear()
+    load_index.cache_clear()
     return dict(Counter(labels.values()))
 
 
 def match_recipes(items, limit=5, cluster=None):
     """Mencari kandidat resep via TF-IDF + Cosine Similarity, lalu urutkan per % bahan tersedia."""
-    recipes, vectorizer, matrix = _load_index()
+    recipes, vectorizer, matrix = load_index()
     items = [i for i in items if not _is_staple(i["name"])]
     weighted = [(clean_text(i["name"]), 2 if i.get("expiring") else 1) for i in items]
     query = " ".join(" ".join([text] * w) for text, w in weighted if text)
@@ -133,8 +152,8 @@ def match_recipes(items, limit=5, cluster=None):
         return []
 
     scores = cosine_similarity(vectorizer.transform([query]), matrix).ravel()
-    all_phrases, all_tokens = _build_matchers([i["name"] for i in items])
-    exp_phrases, exp_tokens = _build_matchers(
+    all_phrases, all_tokens = build_matchers([i["name"] for i in items])
+    exp_phrases, exp_tokens = build_matchers(
         [i["name"] for i in items if i.get("expiring")]
     )
 
@@ -157,16 +176,9 @@ def match_recipes(items, limit=5, cluster=None):
         if title_key in seen:
             continue
         seen.add(title_key)
-        matched, missing = _split_ingredients(rec["ingredients_raw"], all_phrases, all_tokens)
-        coverage = len(matched) / max(1, len(matched) + len(missing))
-        rank = (coverage + (EXPIRING_BONUS if uses_exp else 0.0), score)
-        candidates.append((rank, {
-            **{k: rec[k] for k in RESULT_FIELDS},
-            "match_percent": round(100 * coverage),
-            "uses_expiring": uses_exp,
-            "matched_ingredients": matched,
-            "missing_ingredients": missing,
-        }))
+        matched, missing = split_ingredients(rec["ingredients_raw"], all_phrases, all_tokens)
+        rank = (_coverage(matched, missing) + (EXPIRING_BONUS if uses_exp else 0.0), score)
+        candidates.append((rank, build_result(rec, matched, missing, uses_exp)))
         if len(candidates) >= max(limit, CANDIDATE_POOL):
             break
 
