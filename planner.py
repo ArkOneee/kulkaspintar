@@ -18,24 +18,38 @@ DAYS = ("Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu")
 NOISE_TOKENS = {"bahan", "bumbu", "pelengkap", "pelapis", "olesan", "taburan", "saus", "kuah"}
 MAX_PER_CATEGORY = 2
 PANTRY_CANDIDATES = 25
+NON_INGREDIENTS = {
+    "tiriskan", "goreng", "rebus", "kukus", "panggang", "tumis", "bakar",
+    "rendam", "aduk", "cuci", "kupas", "potong", "cincang", "haluskan",
+    "sajikan", "pelengkap", "bahan", "bumbu", "saus", "olesan", "taburan",
+    "celupan", "larutan", "isian", "topping", "air", "es",
+}
 
 
-def _is_valid_shopping_item(clean_key):
-    """Menyaring label seksi resep atau air biasa agar tidak masuk daftar belanja."""
-    words = clean_key.split()
+def _normalize_shopping_key(raw):
+    """Membersihkan teks bahan kurang dari kata kerja masak & duplikat berurutan."""
+    words = clean_text(raw).split()
     if not words or words[0] == "air":
-        return False
-    return not (len(words) <= 2 and words[0] in NOISE_TOKENS)
+        return ""
+    if len(words) <= 2 and words[0] in NOISE_TOKENS:
+        return ""
+    filtered = [w for w in words if w not in NON_INGREDIENTS]
+    dedup = []
+    for w in filtered:
+        if not dedup or dedup[-1] != w:
+            dedup.append(w)
+    key = " ".join(dedup).strip()
+    return key if len(key) >= 3 else ""
 
 
 def _aggregate_shopping_list(missing_lists):
-    """Menggabungkan bahan kurang dari semua resep; recipe_count = jumlah resep pemakainya."""
+    """Menggabungkan bahan kurang dan melebur kata umum jika versi spesifik sudah ada."""
     grouped = {}
     for missing in missing_lists:
         counted = set()
         for raw in missing:
-            key = clean_text(raw)
-            if not _is_valid_shopping_item(key):
+            key = _normalize_shopping_key(raw)
+            if not key:
                 continue
             entry = grouped.setdefault(
                 key, {"name": key.title(), "examples": [], "recipe_count": 0}
@@ -45,7 +59,19 @@ def _aggregate_shopping_list(missing_lists):
                 entry["recipe_count"] += 1
             if raw not in entry["examples"] and len(entry["examples"]) < 2:
                 entry["examples"].append(raw)
-    return sorted(grouped.values(), key=lambda x: (-x["recipe_count"], x["name"]))
+
+    all_keys = set(grouped)
+    merged = {}
+    for key, entry in grouped.items():
+        if " " not in key:
+            specifics = [k for k in all_keys if k != key and key in k.split()]
+            if specifics:
+                for sp in specifics:
+                    grouped[sp]["recipe_count"] += entry["recipe_count"]
+                continue
+        merged[key] = entry
+
+    return sorted(merged.values(), key=lambda x: (-x["recipe_count"], x["name"]))
 
 
 
