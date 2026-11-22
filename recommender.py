@@ -30,6 +30,7 @@ MIN_SCORE = 0.05
 EXPIRING_BONUS = 0.15
 CANDIDATE_POOL = 30
 
+ALIASES = {"cabe": "cabai", "telor": "telur", "bombai": "bombay", "jahe": "jahe"}
 
 @lru_cache(maxsize=1)
 def load_index():
