@@ -13,10 +13,6 @@ STOPWORDS = {
     "gram", "gr", "kg", "ekor", "potong", "ruas", "ikat", "bungkus", "ml",
     "liter", "gelas", "sendok", "makan", "teh", "iris", "halus", "geprek",
 }
-COST_MAP = {
-    "Sapi": 35000, "Kambing": 35000, "Udang": 28000, "Ayam": 22000,
-    "Ikan": 20000, "Telur": 12000, "Tahu": 10000, "Tempe": 10000,
-}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS pantry_items (
@@ -28,7 +24,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL, ingredients_raw TEXT NOT NULL, ingredients_clean TEXT NOT NULL,
     steps TEXT NOT NULL, category TEXT DEFAULT 'Umum', prep_time_mins INTEGER DEFAULT 20,
-    est_cost INTEGER DEFAULT 15000, cluster_label TEXT DEFAULT 'Menu Harian'
+    cluster_label TEXT DEFAULT 'Menu Hemat'
 );
 CREATE TABLE IF NOT EXISTS weekly_plans (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,11 +35,6 @@ CREATE TABLE IF NOT EXISTS chat_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL, sender TEXT NOT NULL, message TEXT NOT NULL,
     route_used TEXT DEFAULT 'rule_based', created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS shopping_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    week_label TEXT NOT NULL, item_count INTEGER NOT NULL,
-    total_spent INTEGER NOT NULL, created_at TEXT NOT NULL
 );
 """
 
@@ -94,7 +85,6 @@ def recipe_record(row):
         "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1)),
         category,
         min(60, max(10, len(steps) * 5)),
-        COST_MAP.get(category, 15000),
     )
 
 
@@ -113,7 +103,7 @@ def seed_recipes(conn):
     )
     columns = [
         "title", "ingredients_raw", "ingredients_clean",
-        "steps", "category", "prep_time_mins", "est_cost",
+        "steps", "category", "prep_time_mins",
     ]
     insert(conn, "recipes", columns, [recipe_record(r) for r in df.itertuples()])
 
@@ -136,19 +126,7 @@ def seed_sample_user_data(conn):
             ],
         )
 
-    if is_empty(conn, "shopping_logs"):
-        insert(
-            conn,
-            "shopping_logs",
-            ["week_label", "item_count", "total_spent", "created_at"],
-            [
-                ("Minggu 1", 8, 85000, day(-28)),
-                ("Minggu 2", 12, 120000, day(-21)),
-                ("Minggu 3", 6, 65000, day(-14)),
-                ("Minggu 4", 15, 155000, day(-7)),
-                ("Minggu 5", 10, 105000, day()),
-            ],
-        )
+    
 
 
 if __name__ == "__main__":
