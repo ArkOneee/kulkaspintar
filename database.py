@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL, ingredients_raw TEXT NOT NULL, ingredients_clean TEXT NOT NULL,
     steps TEXT NOT NULL, category TEXT DEFAULT 'Umum', prep_time_mins INTEGER DEFAULT 20,
-    cluster_label TEXT DEFAULT 'Menu Hemat'
+    cluster_label TEXT DEFAULT 'Menu Sederhana'
 );
 CREATE TABLE IF NOT EXISTS weekly_plans (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

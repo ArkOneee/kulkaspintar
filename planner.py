@@ -201,8 +201,8 @@ if __name__ == "__main__":
         print(f"- {d['day_name']:6s}: {d['recipe']['title']} ({d['recipe']['match_percent']}%)")
     print(f"Pelengkap dibeli: {len(p1['shopping_list'])} item")
 
-    p2 = plan_for_shopping(cluster="Menu Hemat", seed=42)
-    print("\n=== ALUR 2: MENU 7 HARI (MENU HEMAT) -> DAFTAR BELANJA ===")
+    p2 = plan_for_shopping(cluster="Menu Sederhana", seed=42)
+    print("\n=== ALUR 2: MENU 7 HARI (MENU SEDERHANA) -> DAFTAR BELANJA ===")
     for d in p2["days"]:
         print(f"- {d['day_name']:6s}: {d['recipe']['title']} [{d['recipe']['category']}]")
     print(f"Total belanja: {len(p2['shopping_list'])} item")

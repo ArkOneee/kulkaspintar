@@ -22,7 +22,7 @@ STAPLES = {
 VARIANT_WORDS = {"asin", "puyuh", "bebek"}
 KILAT_LABEL = "Masakan Kilat"
 KILAT_MAX_MINS = 15
-CLUSTER_NAMES = ("Menu Hemat", "Menu Lengkap")
+CLUSTER_NAMES = ("Menu Sederhana", "Menu Lengkap")
 RESULT_FIELDS = (
     "id", "title", "category", "cluster_label", "prep_time_mins", "steps",
 )
@@ -108,7 +108,7 @@ def build_result(rec, matched, missing, uses_exp=False):
 
 
 def _kmeans_labels(recipes):
-    """Mengelompokkan resep dengan K-Means; klaster termurah = Hemat, lainnya = Lengkap."""
+    """Mengelompokkan resep dengan K-Means; klaster bahan sedikit = Sederhana, lainnya = Lengkap."""
     features = np.array(
         [
             [r["prep_time_mins"], r["ingredients_raw"].count(",") + 1]
@@ -125,7 +125,7 @@ def _kmeans_labels(recipes):
 
 
 def run_kmeans_clustering():
-    """Memberi label menu: Kilat lewat aturan waktu masak, Hemat/Lengkap lewat K-Means."""
+    """Memberi label menu: Kilat lewat aturan waktu masak, Sederhana/Lengkap lewat K-Means."""
     recipes, _, _ = load_index()
     slow = [r for r in recipes if r["prep_time_mins"] > KILAT_MAX_MINS]
     if len(slow) < len(CLUSTER_NAMES):
