@@ -14,12 +14,19 @@ MODIFIERS = {
     "putih", "merah", "hijau", "hitam", "kuning", "manis", "asin",
     "bubuk", "segar", "kering", "cair", "goreng", "rebus", "bakar",
 }
+SUB_HEAD_MODIFIERS = {
+    "telur", "telor", "ikan", "susu", "keju", "minyak", "tepung", "daun",
+    "biji", "akar", "kulit", "kuah", "kaldu", "royco", "royko", "masako",
+    "rasa", "bumbu", "racik", "kecap", "saus", "saos", "petis", "terasi",
+    "abon", "kerupuk", "krupuk", "mie", "mi", "kembang", "mata", "rebusan",
+    "bubuk", "sari", "ekstrak", "air", "ungkep", "merebus", "menggoreng",
+}
 CORE_PROTEINS = {"ayam", "telur", "tahu", "tempe", "ikan", "udang", "sapi", "kambing"}
 STAPLES = {
     "garam", "gula", "minyak", "merica", "lada",
     "masako", "micin", "penyedap", "royco", "kaldu",
 }
-VARIANT_WORDS = {"asin", "puyuh", "bebek"}
+VARIANT_WORDS = {"asin", "puyuh", "bebek", "sutra", "sumedang", "jepang", "bombay"}
 KILAT_LABEL = "Masakan Kilat"
 KILAT_MAX_MINS = 15
 CLUSTER_NAMES = ("Menu Sederhana", "Menu Lengkap")
@@ -49,11 +56,11 @@ def build_matchers(names):
     phrases, tokens = set(), set()
     for name in names:
         words = clean_text(name).split()
-        if len(words) == 1 and words[0] not in MODIFIERS:
+        if len(words) == 1 and words[0] not in MODIFIERS and words[0] not in VARIANT_WORDS:
             tokens.add(words[0])
         elif len(words) > 1:
             phrases.add(" ".join(words))
-            if words[0] in CORE_PROTEINS:
+            if words[0] in CORE_PROTEINS and VARIANT_WORDS.isdisjoint(words[1:]):
                 tokens.add(words[0])
     return phrases, tokens
 
@@ -76,7 +83,12 @@ def _matches(item, phrases, tokens):
     words = cleaned.split()
     if any(p in cleaned for p in phrases):
         return True
-    return not tokens.isdisjoint(words) and VARIANT_WORDS.isdisjoint(words)
+    if not VARIANT_WORDS.isdisjoint(words):
+        return False
+    for idx, word in enumerate(words):
+        if word in tokens and not (idx > 0 and words[idx - 1] in SUB_HEAD_MODIFIERS):
+            return True
+    return False
 
 
 def core_ingredients(raw_str):
@@ -178,6 +190,8 @@ def match_recipes(items, limit=5, cluster=None):
             continue
         seen.add(title_key)
         matched, missing = split_ingredients(rec["ingredients_raw"], all_phrases, all_tokens)
+        if not matched:
+            continue
         rank = (_coverage(matched, missing) + (EXPIRING_BONUS if uses_exp else 0.0), score)
         candidates.append((rank, build_result(rec, matched, missing, uses_exp)))
         if len(candidates) >= max(limit, CANDIDATE_POOL):
